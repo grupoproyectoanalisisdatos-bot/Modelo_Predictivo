@@ -3,70 +3,54 @@ import pandas as pd
 import joblib
 from datetime import datetime
 
-# 1. Configuración estética
-st.set_page_config(page_title="Prediccion Clima Antioquia", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="Predictor Climático Inteligente", layout="wide")
 
-# Estilo personalizado con Markdown
-st.markdown("""
-    <style>
-    .main {
-        background-color: #f5f7f9;
-    }
-    .stButton>button {
-        width: 100%;
-        background-color: #007bff;
-        color: white;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("🌡️ Monitor Predictivo de Temperatura")
-st.subheader("Análisis basado en estaciones de IDEAM")
-
-# 2. Carga del modelo
+# Carga de modelos y mapeos
 @st.cache_resource
-def cargar_modelo():
-    return joblib.load('modelo_temperatura_railway.pkl')
+def cargar_recursos():
+    modelo = joblib.load('modelo_clima_municipios_id.pkl')
+    mapa = joblib.load('mapa_municipios.pkl')
+    return modelo, mapa
 
-modelo = cargar_modelo()
-
-# 3. Interfaz Lateral (Sidebar)
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/4052/4052984.png", width=100)
-st.sidebar.header("Parámetros de Consulta")
-
-# Agregamos el selector de Municipio
-municipio = st.sidebar.selectbox(
-    "Seleccione el Municipio:",
-    ["Alejandría", "Urrao", "Cañasgordas", "Otros"]
-)
-
-fecha = st.sidebar.date_input("Fecha de Análisis", datetime.now())
-t_min = st.sidebar.slider("Temperatura Mínima esperada (°C)", 0.0, 30.0, 15.0)
-
-# 4. Cuerpo principal
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.info(f"Configuración seleccionada: **{municipio}** para el día **{fecha.strftime('%d/%m/%Y')}**")
+try:
+    modelo, mapa_municipios = cargar_recursos()
     
-    if st.button("Generar Predicción"):
-        # Preparación de datos (Igual que en el entrenamiento)
-        input_data = pd.DataFrame([[t_min, fecha.month, fecha.day]], 
-                                  columns=['temp_min', 'Mes', 'Dia'])
-        
-        prediccion = modelo.predict(input_data)[0]
-        
-        # Mostrar resultado con un diseño llamativo
-        st.metric(label="Temperatura Máxima Estimada", value=f"{prediccion:.2f} °C", delta=f"{prediccion - t_min:.2f} °C (Oscilación)")
-        
-        # Lógica de advertencia según el municipio
-        if prediccion > 28:
-            st.error(f"⚠️ Alerta de calor en {municipio}. Se recomienda monitoreo de riego.")
-        else:
-            st.success(f"✅ Condiciones estables para {municipio}.")
+    # Interfaz
+    st.title("🌦️ Sistema de Predicción Climática Agrícola")
+    st.markdown("---")
 
-with col2:
-    st.write("### Detalles Técnicos")
-    st.write(f"**Estación:** {municipio}")
-    st.write(f"**Variable predictora:** Mínima de {t_min}°C")
-    st.write("**Modelo:** Random Forest Regressor")
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        st.header("Configuración")
+        # El selector ahora usa los nombres del mapa que guardaste en Colab
+        nombre_municipio = st.selectbox("Seleccione el Municipio:", options=list(mapa_municipios.values()))
+        
+        # Obtenemos el ID correspondiente al nombre seleccionado
+        municipio_id = [id for id, nombre in mapa_municipios.items() if nombre == nombre_municipio][0]
+        
+        fecha = st.date_input("Fecha de predicción", datetime.now())
+        t_min = st.number_input("Temperatura Mínima Estimada (°C)", value=15.0)
+        
+        btn_predecir = st.button("Calcular Predicción")
+
+    with col2:
+        st.header("Resultado del Modelo")
+        if btn_predecir:
+            # Preparar datos para el modelo: [temp_min, Mes, Dia, Municipio_ID]
+            input_data = pd.DataFrame([[t_min, fecha.month, fecha.day, municipio_id]], 
+                                      columns=['temp_min', 'Mes', 'Dia', 'Municipio_ID'])
+            
+            prediccion = modelo.predict(input_data)[0]
+            
+            st.metric(label=f"Temperatura Máxima en {nombre_municipio}", 
+                      value=f"{prediccion:.2f} °C", 
+                      delta=f"{prediccion - t_min:.2f} °C vs Mínima")
+            
+            # Recomendación BI
+            st.info(f"Análisis para {nombre_municipio}: El modelo estima una oscilación térmica de {prediccion - t_min:.2f} grados.")
+
+except Exception as e:
+    st.error(f"Error al cargar los archivos: {e}")
+    st.warning("Asegúrate de que los archivos .pkl estén en la raíz del repositorio.")
